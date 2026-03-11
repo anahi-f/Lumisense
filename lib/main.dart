@@ -1,20 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/control_page.dart';
 import 'screens/modes_page.dart';
+import 'screens/tutorial_screen.dart';
 
-void main() {
-  runApp(const LumiSense());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Verificar si ya vio el tutorial
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  bool vistoTutorial = prefs.getBool('visto_tutorial') ?? false;
+
+  runApp(LumiSense(mostrarTutorial: !vistoTutorial));
 }
 
 class LumiSense extends StatelessWidget {
-  const LumiSense({super.key});
+  final bool mostrarTutorial;
+
+  const LumiSense({super.key, required this.mostrarTutorial});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(),
-      home: const MainMenu(),
+      home: mostrarTutorial ? const TutorialScreen() : const MainMenu(),
     );
   }
 }
@@ -37,6 +47,22 @@ class _MainMenuState extends State<MainMenu> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text("LumiSense"),
+        backgroundColor: Colors.black,
+        actions: [
+          // Botón de ayuda para repetir tutorial
+          IconButton(
+            icon: const Icon(Icons.help_outline, color: Colors.white),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TutorialScreen()),
+              );
+            },
+          ),
+        ],
+      ),
       body: pages[currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,

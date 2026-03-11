@@ -1,3 +1,3 @@
 import 'bluetooth_service.dart';
 
-BLEManager bluetooth = BLEManager();
+final BluetoothManager bluetooth = BluetoothManager.instance;

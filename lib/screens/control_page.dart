@@ -1,9 +1,14 @@
+// ============================================
+// control_page.dart (COMPLETO)
+// ============================================
+
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import '../Bluetooth/global.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart' as ble;
 
-const Color moradoLumisense = Color(0xFFd0a3cf); // Morado pastel clarito
+const Color moradoLumisense = Color(0xFFd0a3cf);
+final ValueNotifier<bool> ledStateNotifier = ValueNotifier<bool>(false);
 
 class ControlPage extends StatefulWidget {
   const ControlPage({super.key});
@@ -12,18 +17,63 @@ class ControlPage extends StatefulWidget {
   State<ControlPage> createState() => _ControlPageState();
 }
 
-class _ControlPageState extends State<ControlPage> {
-  bool ledOn = false;
-  Color selectedColor = Colors.blue;
-  double intensity = 30;
-  double speed = 20;
+class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
+  // Estos valores ahora se obtienen del BluetoothManager global
+  Color get selectedColor => bluetooth.selectedColor;
+  set selectedColor(Color value) => bluetooth.selectedColor = value;
 
-  /// ================= COLOR PICKER =================
-  void openColorPicker() {
+  double get intensity => bluetooth.intensity;
+  set intensity(double value) => bluetooth.intensity = value;
+
+  double get speed => bluetooth.speed;
+  set speed(double value) => bluetooth.speed = value;
+
+  String? get modoActivo => bluetooth.modoActivo;
+
+  @override
+  void initState() {
+    super.initState();
+    bluetooth.connectionNotifier.addListener(_onConnectionChange);
+    WidgetsBinding.instance.addObserver(this);
+    // Inicializar ledStateNotifier con el valor guardado en bluetooth
+    ledStateNotifier.value = bluetooth.ledOn;
+  }
+
+  void _onConnectionChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    bluetooth.connectionNotifier.removeListener(_onConnectionChange);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    setState(() {});
+  }
+
+  String getSpeedLabel(double value) {
+    if (value <= 13) return "Lento";
+    if (value <= 27) return "Normal";
+    return "Rápido";
+  }
+
+  void abrirSelectorColor() {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xff1E293B),
+        backgroundColor: Colors.black,
         title: const Text(
           "Seleccionar Color",
           style: TextStyle(color: Colors.white),
@@ -34,7 +84,9 @@ class _ControlPageState extends State<ControlPage> {
             setState(() {
               selectedColor = color;
             });
-            bluetooth.send("COLOR:${color.red},${color.green},${color.blue}");
+            if (ledStateNotifier.value) {
+              bluetooth.send("COLOR:${color.red},${color.green},${color.blue}");
+            }
           },
           pickerAreaHeightPercent: 0.8,
         ),
@@ -56,189 +108,540 @@ class _ControlPageState extends State<ControlPage> {
 
   @override
   Widget build(BuildContext context) {
+    bool isConnected = bluetooth.connectionNotifier.value;
+    bool controlesHabilitados = isConnected;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Control LED"),
         backgroundColor: Colors.black,
+        actions: [
+          if (modoActivo != null && controlesHabilitados)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: moradoLumisense.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: moradoLumisense),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    modoActivo == "Emociones"
+                        ? Icons.emoji_emotions
+                        : modoActivo == "Respiración"
+                        ? Icons.air
+                        : Icons.waves,
+                    color: moradoLumisense,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    modoActivo!,
+                    style: const TextStyle(
+                      color: moradoLumisense,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: isConnected
+                  ? Colors.green.withOpacity(0.2)
+                  : Colors.red.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: isConnected ? Colors.green : Colors.red,
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isConnected ? Colors.green : Colors.red,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  isConnected ? "Conectado" : "Desconectado",
+                  style: TextStyle(
+                    color: isConnected ? Colors.green : Colors.red,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
+      backgroundColor: Colors.black,
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: SingleChildScrollView(
           child: Column(
             children: [
-              /// BLUETOOTH BUTTON - Morado
+              // Botón Bluetooth
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 20),
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      isDismissible: true,
-                      enableDrag: true,
-                      backgroundColor: Colors.transparent,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+                child: AbsorbPointer(
+                  absorbing: isConnected,
+                  child: Opacity(
+                    opacity: isConnected ? 0.7 : 1.0,
+                    child: ElevatedButton.icon(
+                      onPressed: isConnected
+                          ? null
+                          : () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          isDismissible: true,
+                          enableDrag: true,
+                          backgroundColor: Colors.transparent,
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(25)),
+                          ),
+                          builder: (_) => const BluetoothSheet(),
+                        ).then((_) {
+                          if (mounted) setState(() {});
+                        });
+                      },
+                      icon: Icon(
+                        Icons.bluetooth,
+                        color: isConnected ? Colors.green : Colors.white,
                       ),
-                      builder: (_) => const BluetoothSheet(),
-                    );
-                  },
-                  icon: Icon(
-                    Icons.bluetooth,
-                    color: bluetooth.isConnected ? Colors.green : Colors.white,
-                  ),
-                  label: Text(
-                    bluetooth.isConnected ? "Conectado" : "Conectar Bluetooth",
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: bluetooth.isConnected ? Colors.green : moradoLumisense,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 55),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      label: Text(
+                        isConnected ? "Conectado" : "Conectar Bluetooth",
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                        isConnected ? Colors.green : moradoLumisense,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 55),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 4,
+                        shadowColor: moradoLumisense.withOpacity(0.4),
+                      ),
                     ),
-                    elevation: 4,
-                    shadowColor: moradoLumisense.withOpacity(0.4),
                   ),
                 ),
               ),
 
-              /// Estado de conexión
-              if (bluetooth.isConnected)
+              // Estado de conexión
+              if (isConnected)
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
+                    color: modoActivo != null
+                        ? moradoLumisense.withOpacity(0.2)
+                        : Colors.green.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.green),
+                    border: Border.all(
+                      color: modoActivo != null ? moradoLumisense : Colors.green,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        modoActivo != null ? Icons.info : Icons.check_circle,
+                        color: modoActivo != null ? moradoLumisense : Colors.green,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        modoActivo != null
+                            ? "Modo $modoActivo activo"
+                            : "ESP32 Conectado",
+                        style: TextStyle(
+                          color: modoActivo != null ? moradoLumisense : Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle, color: Colors.green, size: 16),
+                      Icon(Icons.bluetooth_disabled, color: Colors.red, size: 16),
                       SizedBox(width: 8),
-                      Text("ESP32 Conectado", style: TextStyle(color: Colors.green)),
+                      Text(
+                        "Sin conexión Bluetooth",
+                        style: TextStyle(color: Colors.red),
+                      ),
                     ],
                   ),
                 ),
 
               const SizedBox(height: 20),
 
-              /// ON OFF
-              Card(
-                color: const Color(0xff1E293B),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: SwitchListTile(
-                  title: const Text(
-                    "Encendido/Apagado",
-                    style: TextStyle(color: Colors.white),
+              // Encendido/Apagado
+              AbsorbPointer(
+                absorbing: !controlesHabilitados,
+                child: Opacity(
+                  opacity: controlesHabilitados ? 1.0 : 0.5,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: ledStateNotifier,
+                    builder: (context, ledOn, child) {
+                      // Sincronizar con bluetooth.ledOn
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (bluetooth.ledOn != ledOn) {
+                          bluetooth.ledOn = ledOn;
+                        }
+                      });
+                      return Card(
+                        color: const Color(0xff1E293B),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: SwitchListTile(
+                          title: const Text(
+                            "Encendido/Apagado",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          value: ledOn,
+                          activeColor: moradoLumisense,
+                          onChanged: controlesHabilitados
+                              ? (value) async {
+                            ledStateNotifier.value = value;
+                            bluetooth.ledOn = value; // guardar en global
+                            if (value) {
+                              await bluetooth.send("ON");
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("LED Encendido"),
+                                  duration: Duration(seconds: 1),
+                                  backgroundColor: moradoLumisense,
+                                ),
+                              );
+                            } else {
+                              await bluetooth.send("OFF");
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("LED Apagado"),
+                                  duration: Duration(seconds: 1),
+                                  backgroundColor: moradoLumisense,
+                                ),
+                              );
+                            }
+                          }
+                              : null,
+                        ),
+                      );
+                    },
                   ),
-                  value: ledOn,
-                  activeColor: moradoLumisense,
-                  onChanged: (value) async {
-                    setState(() {
-                      ledOn = value;
-                    });
-                    if (ledOn) {
-                      await bluetooth.send("ON");
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("LED Encendido"),
-                          duration: Duration(seconds: 1),
-                          backgroundColor: moradoLumisense,
-                        ),
-                      );
-                    } else {
-                      await bluetooth.send("OFF");
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("LED Apagado"),
-                          duration: Duration(seconds: 1),
-                          backgroundColor: moradoLumisense,
-                        ),
-                      );
-                    }
-                  },
                 ),
               ),
 
               const SizedBox(height: 20),
 
-              /// COLOR BUTTON - Morado
-              ElevatedButton.icon(
-                onPressed: openColorPicker,
-                icon: const Icon(Icons.color_lens),
-                label: const Text("Seleccionar Color"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: moradoLumisense,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  elevation: 4,
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              /// INTENSIDAD
-              const Text(
-                "Intensidad",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              Slider(
-                value: intensity,
-                min: 0,
-                max: 60,
-                divisions: 60,
-                activeColor: moradoLumisense,
-                inactiveColor: moradoLumisense.withOpacity(0.3),
-                onChanged: (value) {
-                  setState(() {
-                    intensity = value;
-                  });
-                  bluetooth.send("INT:${value.toInt()}");
-                },
-              ),
-              Text("${intensity.toInt()}%", style: const TextStyle(fontSize: 16)),
-
-              const SizedBox(height: 20),
-
-              /// VELOCIDAD
-              const Text(
-                "Velocidad",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              Slider(
-                value: speed,
-                min: 0,
-                max: 40,
-                divisions: 40,
-                activeColor: moradoLumisense,
-                inactiveColor: moradoLumisense.withOpacity(0.3),
-                onChanged: (value) {
-                  setState(() {
-                    speed = value;
-                  });
-                  // Enviar comando SPEED a la tira LED
-                  bluetooth.send("SPEED:${value.toInt()}");
-
-                  // Mostrar feedback visual
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Velocidad: ${value.toInt()}"),
-                      duration: const Duration(milliseconds: 500),
-                      backgroundColor: moradoLumisense,
+              // Botón de color
+              if (modoActivo != "Emociones") ...[
+                AbsorbPointer(
+                  absorbing: !controlesHabilitados,
+                  child: Opacity(
+                    opacity: controlesHabilitados ? 1.0 : 0.5,
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: ledStateNotifier,
+                      builder: (context, ledOn, child) {
+                        return AbsorbPointer(
+                          absorbing: !ledOn,
+                          child: Opacity(
+                            opacity: ledOn ? 1.0 : 0.5,
+                            child: ElevatedButton.icon(
+                              onPressed: (modoActivo == null ||
+                                  modoActivo == "Respiración" ||
+                                  modoActivo == "Ola") &&
+                                  ledOn &&
+                                  controlesHabilitados
+                                  ? abrirSelectorColor
+                                  : null,
+                              icon: const Icon(Icons.color_lens),
+                              label: const Text("Seleccionar Color"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: (modoActivo == null ||
+                                    modoActivo == "Respiración" ||
+                                    modoActivo == "Ola") &&
+                                    ledOn &&
+                                    controlesHabilitados
+                                    ? moradoLumisense
+                                    : Colors.grey,
+                                foregroundColor: Colors.white,
+                                minimumSize: const Size(double.infinity, 50),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                elevation: 4,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ),
+                const SizedBox(height: 30),
+              ],
+
+              // Intensidad
+              AbsorbPointer(
+                absorbing: !controlesHabilitados,
+                child: Opacity(
+                  opacity: controlesHabilitados ? 1.0 : 0.5,
+                  child: Column(
+                    children: [
+                      const Text(
+                        "Intensidad",
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      ValueListenableBuilder<bool>(
+                        valueListenable: ledStateNotifier,
+                        builder: (context, ledOn, child) {
+                          return AbsorbPointer(
+                            absorbing: !ledOn,
+                            child: Opacity(
+                              opacity: ledOn ? 1.0 : 0.5,
+                              child: Column(
+                                children: [
+                                  Slider(
+                                    value: intensity,
+                                    min: 0,
+                                    max: 100,
+                                    divisions: 4,
+                                    activeColor: moradoLumisense,
+                                    inactiveColor: moradoLumisense.withOpacity(0.3),
+                                    onChanged: ledOn && controlesHabilitados
+                                        ? (value) {
+                                      setState(() {
+                                        intensity = value;
+                                      });
+                                      int espValue = (value / 10).round(); // 0-100 → 0-10
+                                      bluetooth.send("INT:$espValue");
+                                    }
+                                        : null,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [0, 25, 50, 75, 100].map((step) {
+                                      bool isCurrent = intensity.toInt() == step;
+                                      return Text(
+                                        '$step%',
+                                        style: TextStyle(
+                                          color: isCurrent ? moradoLumisense : Colors.grey,
+                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                          fontSize: 14,
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                  Text(
+                                    "${intensity.toInt()}%",
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              Text("${speed.toInt()}", style: const TextStyle(fontSize: 16)),
+
+              const SizedBox(height: 20),
+
+              // Velocidad
+              AbsorbPointer(
+                absorbing: !controlesHabilitados,
+                child: Opacity(
+                  opacity: controlesHabilitados ? 1.0 : 0.5,
+                  child: Column(
+                    children: [
+                      const Text(
+                        "Velocidad",
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      ValueListenableBuilder<bool>(
+                        valueListenable: ledStateNotifier,
+                        builder: (context, ledOn, child) {
+                          final velocidadHabilitada = ledOn &&
+                              (modoActivo == null || modoActivo == "Ola") &&
+                              controlesHabilitados;
+
+                          return AbsorbPointer(
+                            absorbing: !velocidadHabilitada,
+                            child: Opacity(
+                              opacity: velocidadHabilitada ? 1.0 : 0.5,
+                              child: Column(
+                                children: [
+                                  Slider(
+                                    value: speed,
+                                    min: 0,
+                                    max: 40,
+                                    divisions: 2,  // 3 posiciones: 0, 20, 40
+                                    activeColor: velocidadHabilitada
+                                        ? moradoLumisense
+                                        : Colors.grey,
+                                    inactiveColor:
+                                    moradoLumisense.withOpacity(0.3),
+                                    onChanged: velocidadHabilitada
+                                        ? (value) {
+                                      setState(() {
+                                        speed = value;
+                                      });
+                                      // Convertir posición a valor real para enviar
+                                      int realValue;
+                                      if (value <= 10) realValue = 1;      // Lento
+                                      else if (value <= 30) realValue = 20; // Normal
+                                      else realValue = 40;                  // Rápido
+                                      bluetooth.send("SPEED:$realValue");
+                                    }
+                                        : null,
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          "Lento",
+                                          style: TextStyle(
+                                            color: velocidadHabilitada && speed <= 10
+                                                ? moradoLumisense
+                                                : (velocidadHabilitada
+                                                ? Colors.white70
+                                                : Colors.grey),
+                                            fontWeight: speed <= 10
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                        ),
+                                        Text(
+                                          "Normal",
+                                          style: TextStyle(
+                                            color: velocidadHabilitada &&
+                                                speed > 10 && speed <= 30
+                                                ? moradoLumisense
+                                                : (velocidadHabilitada
+                                                ? Colors.white70
+                                                : Colors.grey),
+                                            fontWeight: (speed > 10 && speed <= 30)
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                        ),
+                                        Text(
+                                          "Rápido",
+                                          style: TextStyle(
+                                            color: velocidadHabilitada && speed > 30
+                                                ? moradoLumisense
+                                                : (velocidadHabilitada
+                                                ? Colors.white70
+                                                : Colors.grey),
+                                            fontWeight: speed > 30
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: velocidadHabilitada
+                                              ? moradoLumisense.withOpacity(0.2)
+                                              : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          getSpeedLabel(speed),
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: velocidadHabilitada
+                                                ? moradoLumisense
+                                                : Colors.grey,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        speed <= 10 ? "1" : (speed <= 30 ? "20" : "40"),
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: velocidadHabilitada
+                                              ? Colors.white70
+                                              : Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (modoActivo != null && controlesHabilitados)
+                Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: moradoLumisense.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: moradoLumisense.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      modoActivo == "Emociones"
+                          ? 'Modo Emociones: Solo puedes cambiar la intensidad'
+                          : modoActivo == "Respiración"
+                          ? 'Modo Respiración: Puedes cambiar color e intensidad'
+                          : 'Modo Ola: Puedes cambiar color, velocidad e intensidad',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -247,9 +650,9 @@ class _ControlPageState extends State<ControlPage> {
   }
 }
 
-/// =================================================
-///                BLUETOOTH SHEET (MODAL)
-/// =================================================
+// =================================================
+//                HOJA DE BLUETOOTH (MODAL)
+// =================================================
 
 class BluetoothSheet extends StatefulWidget {
   const BluetoothSheet({super.key});
@@ -259,7 +662,7 @@ class BluetoothSheet extends StatefulWidget {
 }
 
 class _BluetoothSheetState extends State<BluetoothSheet> {
-  List<ble.BluetoothDevice> devices = [];
+  List<BluetoothDevice> devices = [];
   bool scanning = true;
   bool connecting = false;
   String statusMessage = "Buscando dispositivos...";
@@ -279,17 +682,20 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
 
     try {
       await bluetooth.startScan((device) {
-        if (mounted) {
-          setState(() {
-            if (!devices.any((d) => d.remoteId == device.remoteId)) {
-              devices.add(device);
-              print("Dispositivo agregado: ${device.platformName}");
-            }
-          });
+        // FILTRO: mismo criterio que en la pantalla principal
+        final deviceName = device.name ?? "";
+        if (deviceName.contains("LumiSense") || deviceName.contains("ESP32")) {
+          if (mounted) {
+            setState(() {
+              if (!devices.any((d) => d.address == device.address)) {
+                devices.add(device);
+                debugPrint("Dispositivo agregado: ${device.name ?? 'Desconocido'}");
+              }
+            });
+          }
         }
       });
 
-      // Esperar 8 segundos
       await Future.delayed(const Duration(seconds: 8));
 
       if (mounted) {
@@ -310,7 +716,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
     }
   }
 
-  Future<void> connectToDevice(ble.BluetoothDevice device) async {
+  Future<void> connectToDevice(BluetoothDevice device) async {
     setState(() {
       connecting = true;
     });
@@ -330,9 +736,6 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
             duration: Duration(seconds: 2),
           ),
         );
-
-        // Forzar actualización de la UI en ControlPage
-        setState(() {});
       } else {
         throw Exception("No se pudo conectar");
       }
@@ -365,8 +768,6 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
       child: Column(
         children: [
           const SizedBox(height: 15),
-
-          // Indicador de arrastre
           Container(
             width: 40,
             height: 4,
@@ -375,10 +776,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-
           const SizedBox(height: 15),
-
-          // Título
           Text(
             scanning ? "Buscando dispositivos..." : "Dispositivos encontrados",
             style: const TextStyle(
@@ -387,10 +785,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
               fontWeight: FontWeight.bold,
             ),
           ),
-
           const SizedBox(height: 10),
-
-          // Barra de progreso
           if (scanning)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -399,10 +794,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
                 valueColor: const AlwaysStoppedAnimation<Color>(moradoLumisense),
               ),
             ),
-
           const SizedBox(height: 10),
-
-          // Lista de dispositivos
           Expanded(
             child: devices.isEmpty && !scanning
                 ? Center(
@@ -440,6 +832,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemBuilder: (context, index) {
                 final device = devices[index];
+                final deviceName = device.name ?? "ESP32 Desconocido";
                 return Card(
                   color: const Color(0xff0F172A),
                   margin: const EdgeInsets.symmetric(vertical: 8),
@@ -458,25 +851,23 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
                       ),
                     ),
                     title: Text(
-                      device.platformName.isNotEmpty
-                          ? device.platformName
-                          : "ESP32 Desconocido",
+                      deviceName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     subtitle: Text(
-                      "ID: ${device.remoteId.toString().substring(0, 8)}...",
+                      "MAC: ${device.address}",
                       style: TextStyle(color: Colors.grey[400]),
                     ),
                     trailing: connecting
-                        ? SizedBox(
+                        ? const SizedBox(
                       width: 24,
                       height: 24,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: const AlwaysStoppedAnimation<Color>(moradoLumisense),
+                        valueColor: AlwaysStoppedAnimation<Color>(moradoLumisense),
                       ),
                     )
                         : ElevatedButton(
