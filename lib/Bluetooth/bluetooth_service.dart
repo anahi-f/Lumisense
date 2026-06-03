@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class BluetoothManager {
   static final BluetoothManager instance = BluetoothManager._internal();
@@ -13,22 +14,25 @@ class BluetoothManager {
   BluetoothConnection? _connection;
   bool isConnected = false;
   bool scanning = false;
+  bool _reconnecting = false;
+  Timer? _keepAliveTimer;               // ✅ Declarado
+  String? _lastConnectedMac;
 
   final ValueNotifier<bool> connectionNotifier = ValueNotifier<bool>(false);
 
   StreamSubscription? _inputSubscription;
   StreamSubscription? _discoverySubscription;
 
-  // Variables de estado para persistir entre pantallas
+  // Variables de estado persistentes
   String? modoActivo;
   bool ledOn = false;
   Color selectedColor = Colors.blue;
-  double intensity = 100.0;   // 0-100
-  double speed = 20.0;        // 0-40
+  double intensity = 100.0;
+  double speed = 20.0;
 
-  // Lista de dispositivos emparejados
   List<BluetoothDevice> bondedDevices = [];
 
+  // ========== PERMISOS Y ESTADO ==========
   Future<bool> requestPermissions() async {
     try {
       List<Permission> permissions = [
@@ -39,7 +43,6 @@ class BluetoothManager {
       ];
       Map<Permission, PermissionStatus> statuses = await permissions.request();
       bool allGranted = statuses.values.every((status) => status.isGranted);
-
       if (!allGranted) {
         if (statuses.values.any((s) => s.isPermanentlyDenied)) {
           await openAppSettings();
@@ -69,6 +72,7 @@ class BluetoothManager {
     }
   }
 
+  // ========== ESCANEO ==========
   Future<void> cancelScan() async {
     try {
       await _discoverySubscription?.cancel();
@@ -89,17 +93,10 @@ class BluetoothManager {
     debugPrint("🟡 Iniciando escaneo...");
     bool granted = await requestPermissions();
     debugPrint("🟡 Permisos concedidos: $granted");
-    if (!granted) {
-      debugPrint("🔴 Permisos denegados");
-      return;
-    }
+    if (!granted) return;
 
     bool locationEnabled = await Permission.location.serviceStatus.isEnabled;
     debugPrint("🟡 Ubicación activada: $locationEnabled");
-    if (!locationEnabled) {
-      debugPrint("🔴 La ubicación no está activada");
-      // Opcional: mostrar diálogo
-    }
 
     bool bluetoothOn = await isBluetoothEnabled();
     debugPrint("🟡 Bluetooth encendido: $bluetoothOn");
@@ -108,51 +105,82 @@ class BluetoothManager {
         await FlutterBluetoothSerial.instance.requestEnable();
         await Future.delayed(const Duration(seconds: 2));
         bluetoothOn = await isBluetoothEnabled();
-        debugPrint("🟡 Bluetooth después de requestEnable: $bluetoothOn");
-      } catch (e) {
-        debugPrint("🔴 Error al encender Bluetooth: $e");
-      }
+      } catch (e) {}
     }
-
-    if (!bluetoothOn) {
-      debugPrint("🔴 Bluetooth sigue apagado, no se puede escanear");
-      return;
-    }
+    if (!bluetoothOn) return;
 
     scanning = true;
 
-    // Obtener emparejados
     try {
       bondedDevices = await getBondedDevices();
-      debugPrint("📱 Dispositivos emparejados encontrados: ${bondedDevices.length}");
       for (var device in bondedDevices) {
-        debugPrint("   - ${device.name} (${device.address})");
         onDeviceFound(device);
       }
-    } catch (e) {
-      debugPrint("🔴 Error obteniendo emparejados: $e");
-    }
+    } catch (e) {}
 
-    // Iniciar descubrimiento
     try {
-      debugPrint("🟡 Iniciando discovery...");
       _discoverySubscription = FlutterBluetoothSerial.instance.startDiscovery().listen(
             (result) {
-          debugPrint("🔍 Descubierto: ${result.device.name} (${result.device.address})");
           onDeviceFound(result.device);
         },
         onError: (e) {
-          debugPrint("🔴 Error en discovery: $e");
           scanning = false;
         },
         onDone: () {
-          debugPrint("✅ Discovery finalizado");
           scanning = false;
         },
       );
     } catch (e) {
-      debugPrint("🔴 Error iniciando discovery: $e");
       scanning = false;
+    }
+  }
+
+  // ========== CONEXIÓN Y RECONEXIÓN ==========
+  Future<void> _saveLastDeviceMac(String mac) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_bluetooth_mac', mac);
+    _lastConnectedMac = mac;
+  }
+
+  Future<String?> getLastDeviceMac() async {
+    if (_lastConnectedMac != null) return _lastConnectedMac;
+    final prefs = await SharedPreferences.getInstance();
+    _lastConnectedMac = prefs.getString('last_bluetooth_mac');
+    return _lastConnectedMac;
+  }
+
+  Future<void> attemptReconnection() async {
+    if (_reconnecting || isConnected) return;
+    _reconnecting = true;
+    debugPrint("🔄 Intentando reconexión automática...");
+    String? mac = await getLastDeviceMac();
+    if (mac == null) {
+      debugPrint("⚠️ No hay MAC guardada para reconectar");
+      _reconnecting = false;
+      return;
+    }
+    try {
+      await Future.delayed(const Duration(seconds: 2));
+      if (!isConnected) {
+        debugPrint("🔄 Reconectando a $mac");
+        await connectToMac(mac);
+      }
+    } catch (e) {
+      debugPrint("❌ Error en reconexión: $e");
+    } finally {
+      _reconnecting = false;
+    }
+  }
+
+  Future<bool> connectToMac(String mac) async {
+    if (isConnected) return true;
+    try {
+      BluetoothDevice device = BluetoothDevice(address: mac);
+      await connect(device);
+      return isConnected;
+    } catch (e) {
+      debugPrint("❌ Error conectando a MAC $mac: $e");
+      return false;
     }
   }
 
@@ -161,23 +189,27 @@ class BluetoothManager {
       debugPrint("YA CONECTADO");
       return;
     }
-
     try {
       debugPrint("Conectando a: ${device.name} (${device.address})");
-
       _connection = await BluetoothConnection.toAddress(device.address);
 
       _inputSubscription = _connection!.input!.listen((data) {
         String message = String.fromCharCodes(data).trim();
         debugPrint("📩 Recibido: $message");
-        // Aquí puedes procesar respuestas si es necesario
       }, onDone: () {
+        debugPrint("🔌 Conexión cerrada por el dispositivo remoto");
         _forceDisconnect();
+        attemptReconnection();
+      }, onError: (e) {
+        debugPrint("❌ Error en la conexión: $e");
+        _forceDisconnect();
+        attemptReconnection();
       });
 
       isConnected = true;
       connectionNotifier.value = true;
-
+      await _saveLastDeviceMac(device.address);
+      _startKeepAlive();
       debugPrint("✅ Conexión SPP establecida");
     } catch (e) {
       debugPrint("Error en conexión: $e");
@@ -186,12 +218,24 @@ class BluetoothManager {
     }
   }
 
+  void _startKeepAlive() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (isConnected && _connection != null) {
+        send("KEEPALIVE");
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  // ========== ENVÍO DE DATOS ==========
   Future<void> send(String message) async {
     if (!isConnected || _connection == null) {
       debugPrint("❌ No conectado, no se puede enviar: $message");
+      attemptReconnection();
       return;
     }
-
     try {
       final data = Uint8List.fromList((message + '\n').codeUnits);
       _connection!.output.add(data);
@@ -200,17 +244,32 @@ class BluetoothManager {
     } catch (e) {
       debugPrint("❌ Error enviando: $e");
       _forceDisconnect();
+      attemptReconnection();
     }
   }
 
+  // ========== DESCONEXIÓN ==========
   Future<void> disconnect() async {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
     try {
-      await _inputSubscription?.cancel();
-      await _connection?.close();
+      if (_connection != null) {
+        if (ledOn) {
+          await send("OFF");
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+        await _inputSubscription?.cancel();
+        await _connection?.close();
+      }
     } catch (e) {
-      debugPrint("Error disconnecting: $e");
+      debugPrint("Error durante desconexión: $e");
     } finally {
       _forceDisconnect();
+      modoActivo = null;
+      ledOn = false;
+      selectedColor = Colors.blue;
+      intensity = 100.0;
+      speed = 20.0;
     }
   }
 
@@ -219,7 +278,8 @@ class BluetoothManager {
     connectionNotifier.value = false;
     _connection = null;
     _inputSubscription?.cancel();
-    // Al desconectar, apagar LED localmente (opcional)
     ledOn = false;
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
   }
 }

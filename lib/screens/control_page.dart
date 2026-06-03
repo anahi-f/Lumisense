@@ -1,7 +1,3 @@
-// ============================================
-// control_page.dart (COMPLETO)
-// ============================================
-
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
@@ -18,15 +14,9 @@ class ControlPage extends StatefulWidget {
 }
 
 class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
-  // Estos valores ahora se obtienen del BluetoothManager global
-  Color get selectedColor => bluetooth.selectedColor;
-  set selectedColor(Color value) => bluetooth.selectedColor = value;
-
-  double get intensity => bluetooth.intensity;
-  set intensity(double value) => bluetooth.intensity = value;
-
-  double get speed => bluetooth.speed;
-  set speed(double value) => bluetooth.speed = value;
+  Color selectedColor = Colors.blue;
+  double intensity = 100;
+  double speed = 20;
 
   String? get modoActivo => bluetooth.modoActivo;
 
@@ -35,8 +25,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
     super.initState();
     bluetooth.connectionNotifier.addListener(_onConnectionChange);
     WidgetsBinding.instance.addObserver(this);
-    // Inicializar ledStateNotifier con el valor guardado en bluetooth
-    ledStateNotifier.value = bluetooth.ledOn;
   }
 
   void _onConnectionChange() {
@@ -106,6 +94,42 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
     );
   }
 
+  // 🔹 NUEVO: método para desconectar con confirmación
+  Future<void> _confirmDisconnect() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Desconectar dispositivo"),
+        content: const Text("¿Estás seguro de que deseas desconectar el Bluetooth?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancelar"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text("Desconectar"),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      await bluetooth.disconnect();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Desconectado correctamente"),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        // Opcional: regresar a la pantalla de conexión
+        // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BluetoothConnectScreen()));
+        setState(() {}); // Actualizar UI
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     bool isConnected = bluetooth.connectionNotifier.value;
@@ -116,6 +140,14 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
         title: const Text("Control LED"),
         backgroundColor: Colors.black,
         actions: [
+          // 🔹 NUEVO: Botón de desconexión (solo visible cuando conectado)
+          if (isConnected)
+            IconButton(
+              icon: const Icon(Icons.bluetooth_disabled, color: Colors.red),
+              onPressed: _confirmDisconnect,
+              tooltip: 'Desconectar Bluetooth',
+            ),
+          // Indicador de modo activo (original)
           if (modoActivo != null && controlesHabilitados)
             Container(
               margin: const EdgeInsets.only(right: 8),
@@ -149,6 +181,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                 ],
               ),
             ),
+          // Indicador de conexión (original)
           Container(
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -193,7 +226,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // Botón Bluetooth
+              // Botón Bluetooth (original)
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 20),
@@ -244,7 +277,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                 ),
               ),
 
-              // Estado de conexión
+              // Estado de conexión (original)
               if (isConnected)
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -300,7 +333,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 
               const SizedBox(height: 20),
 
-              // Encendido/Apagado
+              // Encendido/Apagado (original)
               AbsorbPointer(
                 absorbing: !controlesHabilitados,
                 child: Opacity(
@@ -308,12 +341,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                   child: ValueListenableBuilder<bool>(
                     valueListenable: ledStateNotifier,
                     builder: (context, ledOn, child) {
-                      // Sincronizar con bluetooth.ledOn
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (bluetooth.ledOn != ledOn) {
-                          bluetooth.ledOn = ledOn;
-                        }
-                      });
                       return Card(
                         color: const Color(0xff1E293B),
                         shape: RoundedRectangleBorder(
@@ -329,7 +356,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                           onChanged: controlesHabilitados
                               ? (value) async {
                             ledStateNotifier.value = value;
-                            bluetooth.ledOn = value; // guardar en global
                             if (value) {
                               await bluetooth.send("ON");
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -360,7 +386,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 
               const SizedBox(height: 20),
 
-              // Botón de color
+              // Botón de color (original)
               if (modoActivo != "Emociones") ...[
                 AbsorbPointer(
                   absorbing: !controlesHabilitados,
@@ -408,7 +434,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                 const SizedBox(height: 30),
               ],
 
-              // Intensidad
+              // Intensidad (original)
               AbsorbPointer(
                 absorbing: !controlesHabilitados,
                 child: Opacity(
@@ -432,33 +458,19 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                     value: intensity,
                                     min: 0,
                                     max: 100,
-                                    divisions: 4,
+                                    divisions: 100,
                                     activeColor: moradoLumisense,
-                                    inactiveColor: moradoLumisense.withOpacity(0.3),
+                                    inactiveColor:
+                                    moradoLumisense.withOpacity(0.3),
                                     onChanged: ledOn && controlesHabilitados
                                         ? (value) {
                                       setState(() {
                                         intensity = value;
                                       });
-                                      int espValue = (value / 10).round(); // 0-100 → 0-10
+                                      int espValue = (value / 5).round();
                                       bluetooth.send("INT:$espValue");
                                     }
                                         : null,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [0, 25, 50, 75, 100].map((step) {
-                                      bool isCurrent = intensity.toInt() == step;
-                                      return Text(
-                                        '$step%',
-                                        style: TextStyle(
-                                          color: isCurrent ? moradoLumisense : Colors.grey,
-                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                          fontSize: 14,
-                                        ),
-                                      );
-                                    }).toList(),
                                   ),
                                   Text(
                                     "${intensity.toInt()}%",
@@ -477,7 +489,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 
               const SizedBox(height: 20),
 
-              // Velocidad
+              // Velocidad (original)
               AbsorbPointer(
                 absorbing: !controlesHabilitados,
                 child: Opacity(
@@ -505,7 +517,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                     value: speed,
                                     min: 0,
                                     max: 40,
-                                    divisions: 2,  // 3 posiciones: 0, 20, 40
+                                    divisions: 40,
                                     activeColor: velocidadHabilitada
                                         ? moradoLumisense
                                         : Colors.grey,
@@ -516,12 +528,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                       setState(() {
                                         speed = value;
                                       });
-                                      // Convertir posición a valor real para enviar
-                                      int realValue;
-                                      if (value <= 10) realValue = 1;      // Lento
-                                      else if (value <= 30) realValue = 20; // Normal
-                                      else realValue = 40;                  // Rápido
-                                      bluetooth.send("SPEED:$realValue");
+                                      bluetooth.send("SPEED:${value.toInt()}");
                                     }
                                         : null,
                                   ),
@@ -534,12 +541,13 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                         Text(
                                           "Lento",
                                           style: TextStyle(
-                                            color: velocidadHabilitada && speed <= 10
+                                            color: velocidadHabilitada &&
+                                                speed <= 13
                                                 ? moradoLumisense
                                                 : (velocidadHabilitada
                                                 ? Colors.white70
                                                 : Colors.grey),
-                                            fontWeight: speed <= 10
+                                            fontWeight: speed <= 13
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
                                           ),
@@ -548,12 +556,13 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                           "Normal",
                                           style: TextStyle(
                                             color: velocidadHabilitada &&
-                                                speed > 10 && speed <= 30
+                                                speed > 13 &&
+                                                speed <= 27
                                                 ? moradoLumisense
                                                 : (velocidadHabilitada
                                                 ? Colors.white70
                                                 : Colors.grey),
-                                            fontWeight: (speed > 10 && speed <= 30)
+                                            fontWeight: (speed > 13 && speed <= 27)
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
                                           ),
@@ -561,12 +570,12 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                         Text(
                                           "Rápido",
                                           style: TextStyle(
-                                            color: velocidadHabilitada && speed > 30
+                                            color: velocidadHabilitada && speed > 27
                                                 ? moradoLumisense
                                                 : (velocidadHabilitada
                                                 ? Colors.white70
                                                 : Colors.grey),
-                                            fontWeight: speed > 30
+                                            fontWeight: speed > 27
                                                 ? FontWeight.bold
                                                 : FontWeight.normal,
                                           ),
@@ -600,7 +609,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        speed <= 10 ? "1" : (speed <= 30 ? "20" : "40"),
+                                        "${speed.toInt()}",
                                         style: TextStyle(
                                           fontSize: 14,
                                           color: velocidadHabilitada
@@ -651,7 +660,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 }
 
 // =================================================
-//                HOJA DE BLUETOOTH (MODAL)
+//                HOJA DE BLUETOOTH (MODAL) ORIGINAL
 // =================================================
 
 class BluetoothSheet extends StatefulWidget {
@@ -682,17 +691,13 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
 
     try {
       await bluetooth.startScan((device) {
-        // FILTRO: mismo criterio que en la pantalla principal
-        final deviceName = device.name ?? "";
-        if (deviceName.contains("LumiSense") || deviceName.contains("ESP32")) {
-          if (mounted) {
-            setState(() {
-              if (!devices.any((d) => d.address == device.address)) {
-                devices.add(device);
-                debugPrint("Dispositivo agregado: ${device.name ?? 'Desconocido'}");
-              }
-            });
-          }
+        if (mounted) {
+          setState(() {
+            if (!devices.any((d) => d.address == device.address)) {
+              devices.add(device);
+              debugPrint("Dispositivo agregado: ${device.name ?? 'Desconocido'}");
+            }
+          });
         }
       });
 

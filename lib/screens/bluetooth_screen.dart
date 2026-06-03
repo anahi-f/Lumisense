@@ -1,7 +1,3 @@
-// ============================================
-// bluetooth_screen.dart (COMPLETO)
-// ============================================
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
@@ -20,15 +16,16 @@ class BluetoothConnectScreen extends StatefulWidget {
 
 class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     with SingleTickerProviderStateMixin {
-
-  String connectionStatus = "Buscar dispositivo...";
+  String connectionStatus = "Cargando dispositivos emparejados...";
   bool isScanning = false;
   bool isConnecting = false;
+  bool loadingPaired = true;
 
   late AnimationController _animationController;
   late Animation<double> _animation;
 
-  List<BluetoothDevice> foundDevices = [];
+  List<BluetoothDevice> pairedDevices = [];
+  List<BluetoothDevice> scannedDevices = [];
   Timer? _scanTimer;
 
   @override
@@ -44,7 +41,11 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (bluetooth.isConnected) _navigateToControl();
+      if (bluetooth.isConnected) {
+        _navigateToControl();
+      } else {
+        _loadPairedDevices();
+      }
     });
   }
 
@@ -55,34 +56,59 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     );
   }
 
-  @override
-  void dispose() {
-    _scanTimer?.cancel();
-    bluetooth.cancelScan();
-    _animationController.dispose();
-    super.dispose();
+  // ==================== 1. FILTRO EN EMPAREJADOS ====================
+  Future<void> _loadPairedDevices() async {
+    setState(() {
+      loadingPaired = true;
+      connectionStatus = "Obteniendo dispositivos emparejados...";
+    });
+    try {
+      final devices = await bluetooth.getBondedDevices();
+      // 🔹 FILTRO: solo mostrar los que contengan "lumisense" (sin importar mayúsculas)
+      final filtered = devices.where((d) {
+        final name = d.name ?? "";
+        return name.toLowerCase().contains("lumisense");
+      }).toList();
+      setState(() {
+        pairedDevices = filtered;
+        if (pairedDevices.isNotEmpty) {
+          connectionStatus = "Selecciona un dispositivo emparejado";
+        } else {
+          connectionStatus = "No hay dispositivos LumiSense emparejados. Escanea o conecta manualmente.";
+        }
+      });
+    } catch (e) {
+      setState(() {
+        connectionStatus = "Error al cargar emparejados: $e";
+      });
+    } finally {
+      setState(() {
+        loadingPaired = false;
+      });
+    }
   }
 
+  // ==================== 2. FILTRO EN ESCANEO ====================
   Future<void> startManualScan() async {
     _scanTimer?.cancel();
     await bluetooth.cancelScan();
 
     setState(() {
       isScanning = true;
-      foundDevices.clear();
-      connectionStatus = "Buscando dispositivos...";
+      scannedDevices.clear();
+      connectionStatus = "Escaneando... (10 segundos)";
     });
 
     try {
       await bluetooth.startScan((device) {
-        // FILTRO: mostrar dispositivos que contengan "LumiSense" o "ESP32"
         final deviceName = device.name ?? "";
-        if (deviceName.contains("LumiSense") || deviceName.contains("ESP32")) {
+        // 🔹 FILTRO: solo dispositivos que contengan "lumisense"
+        if (deviceName.toLowerCase().contains("lumisense")) {
           if (mounted) {
             setState(() {
-              if (!foundDevices.any((d) => d.address == device.address)) {
-                foundDevices.add(device);
-                debugPrint("📱 Añadido: ${device.name} (${device.address})");
+              if (!scannedDevices.any((d) => d.address == device.address)) {
+                scannedDevices.add(device);
+                debugPrint("📱 Escaneado (ESP32): ${device.name} (${device.address})");
               }
             });
           }
@@ -94,9 +120,15 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
           await bluetooth.cancelScan();
           setState(() {
             isScanning = false;
-            connectionStatus = foundDevices.isEmpty
-                ? "No se encontraron dispositivos LumiSense"
-                : "Selecciona un dispositivo";
+            if (scannedDevices.isEmpty && pairedDevices.isEmpty) {
+              connectionStatus =
+              "No se encontró ningún LumiSense. Verifica que el ESP32 esté encendido y visible.";
+            } else if (scannedDevices.isEmpty && pairedDevices.isNotEmpty) {
+              connectionStatus =
+              "No se encontraron nuevos, pero tienes dispositivos emparejados abajo.";
+            } else {
+              connectionStatus = "Selecciona un dispositivo para conectar";
+            }
           });
         }
       });
@@ -111,7 +143,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
   Future<void> connectToDevice(BluetoothDevice device) async {
     setState(() {
       isConnecting = true;
-      connectionStatus = "Conectando a ${device.name ?? '...'}";
+      connectionStatus = "Conectando a ${device.name ?? device.address}...";
     });
 
     try {
@@ -122,7 +154,10 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
           isConnecting = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('✓ Conectado a ${device.name}'), backgroundColor: Colors.green),
+          SnackBar(
+            content: Text('✓ Conectado a ${device.name ?? device.address}'),
+            backgroundColor: Colors.green,
+          ),
         );
         Future.delayed(const Duration(seconds: 1), _navigateToControl);
       } else {
@@ -139,11 +174,22 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     }
   }
 
+  // ==================== 3. BOTÓN GRANDE DE DESCONEXIÓN ====================
   Future<void> disconnectDevice() async {
     await bluetooth.disconnect();
-    setState(() => foundDevices.clear());
+    setState(() {
+      scannedDevices.clear();
+      pairedDevices.clear();
+      isScanning = false;
+      isConnecting = false;
+      connectionStatus = "Desconectado. Busca o selecciona un dispositivo.";
+    });
+    await _loadPairedDevices(); // Recargar emparejados
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Dispositivo desconectado'), backgroundColor: Colors.orange),
+      const SnackBar(
+        content: Text('Dispositivo desconectado correctamente'),
+        backgroundColor: Colors.orange,
+      ),
     );
   }
 
@@ -187,7 +233,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
         actions: [
           if (bluetooth.isConnected)
             IconButton(
-              icon: const Icon(Icons.bluetooth_connected, color: Colors.green),
+              icon: const Icon(Icons.bluetooth_disabled, color: Colors.purple),
               onPressed: disconnectDevice,
               tooltip: 'Desconectar',
             ),
@@ -223,41 +269,56 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
+
+              // ========== BOTÓN CONDICIONAL: ESCANEAR O DESCONECTAR ==========
               if (!bluetooth.isConnected) ...[
                 ElevatedButton.icon(
                   onPressed: isScanning ? null : startManualScan,
                   icon: Icon(isScanning ? Icons.hourglass_empty : Icons.search),
-                  label: Text(isScanning ? "Escaneando..." : "Buscar dispositivos"),
+                  label: Text(isScanning ? "Escaneando..." : "Buscar dispositivos LumiSense"),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: moradoLumisense,
                     minimumSize: const Size(double.infinity, 55),
                   ),
                 ),
                 const SizedBox(height: 20),
+              ] else ...[
+                // 🟢 BOTÓN GRANDE DE DESCONEXIÓN (visible solo cuando conectado)
+                ElevatedButton.icon(
+                  onPressed: disconnectDevice,
+                  icon: const Icon(Icons.bluetooth_disabled, color: Colors.white),
+                  label: const Text("Desconectar dispositivo"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    minimumSize: const Size(double.infinity, 55),
+                  ),
+                ),
+                const SizedBox(height: 20),
               ],
-              if (foundDevices.isNotEmpty)
+
+              // Dispositivos emparejados (solo si NO está conectado)
+              if (!bluetooth.isConnected && !loadingPaired && pairedDevices.isNotEmpty)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text("Dispositivos:", style: TextStyle(color: Colors.white70)),
+                      const Text(
+                        "Dispositivos emparejados (toca para conectar):",
+                        style: TextStyle(color: Colors.white70),
+                      ),
                       const SizedBox(height: 10),
                       Expanded(
                         child: ListView.builder(
-                          itemCount: foundDevices.length,
+                          itemCount: pairedDevices.length,
                           itemBuilder: (context, index) {
-                            final device = foundDevices[index];
-                            bool isBonded = bluetooth.bondedDevices.any((d) => d.address == device.address);
+                            final device = pairedDevices[index];
                             return Card(
                               color: const Color(0xff1E293B),
                               margin: const EdgeInsets.symmetric(vertical: 4),
                               child: ListTile(
-                                leading: Icon(
-                                  isBonded ? Icons.bluetooth_connected : Icons.bluetooth,
-                                  color: isBonded ? Colors.green : moradoLumisense,
-                                ),
+                                leading: const Icon(Icons.bluetooth, color: Colors.green),
                                 title: Text(
-                                  device.name ?? "Desconocido",
+                                  device.name ?? "Sin nombre",
                                   style: const TextStyle(color: Colors.white),
                                 ),
                                 subtitle: Text(
@@ -278,10 +339,61 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
                     ],
                   ),
                 ),
-              if (foundDevices.isEmpty && !isScanning)
+
+              // Dispositivos escaneados (solo si NO está conectado)
+              if (!bluetooth.isConnected && scannedDevices.isNotEmpty)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Dispositivos encontrados en escaneo:",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 200,
+                      child: ListView.builder(
+                        itemCount: scannedDevices.length,
+                        itemBuilder: (context, index) {
+                          final device = scannedDevices[index];
+                          return Card(
+                            color: const Color(0xff1E293B),
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            child: ListTile(
+                              leading: Icon(Icons.bluetooth_searching, color: moradoLumisense),
+                              title: Text(
+                                device.name ?? "Desconocido",
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                device.address,
+                                style: TextStyle(color: Colors.grey[400]),
+                              ),
+                              trailing: ElevatedButton(
+                                onPressed: () => connectToDevice(device),
+                                child: const Text("Conectar"),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+
+              // Mensaje si no hay nada
+              if (!bluetooth.isConnected &&
+                  !loadingPaired &&
+                  pairedDevices.isEmpty &&
+                  scannedDevices.isEmpty &&
+                  !isScanning)
                 Column(
                   children: [
-                    const Text("¿No encuentras tu dispositivo LumiSense?", style: TextStyle(color: Colors.white70)),
+                    const Text(
+                      "No hay dispositivos LumiSense emparejados ni encontrados.",
+                      style: TextStyle(color: Colors.white70),
+                    ),
                     const SizedBox(height: 10),
                     ElevatedButton.icon(
                       onPressed: _checkBluetoothStatus,
@@ -290,12 +402,15 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                     ),
                     const SizedBox(height: 20),
-                    const Text("O ingresa la dirección MAC manualmente:", style: TextStyle(color: Colors.white70)),
+                    const Text(
+                      "O ingresa la dirección MAC manualmente:",
+                      style: TextStyle(color: Colors.white70),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
-                        labelText: "Dirección MAC",
+                        labelText: "Dirección MAC (ej: 12:34:56:78:90:AB)",
                         labelStyle: const TextStyle(color: Colors.white70),
                         border: OutlineInputBorder(),
                       ),
@@ -318,6 +433,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
                     ),
                   ],
                 ),
+              if (loadingPaired) const Center(child: CircularProgressIndicator()),
             ],
           ),
         ),
