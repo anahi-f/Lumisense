@@ -56,7 +56,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     );
   }
 
-  // ==================== 1. FILTRO EN EMPAREJADOS ====================
+  // ========== Cargar dispositivos emparejados (filtrados) ==========
   Future<void> _loadPairedDevices() async {
     setState(() {
       loadingPaired = true;
@@ -64,10 +64,11 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     });
     try {
       final devices = await bluetooth.getBondedDevices();
-      // 🔹 FILTRO: solo mostrar los que contengan "lumisense" (sin importar mayúsculas)
+      // 🔹 Filtrar solo los que contengan "lumisense" o "esp32"
       final filtered = devices.where((d) {
         final name = d.name ?? "";
-        return name.toLowerCase().contains("lumisense");
+        return name.toLowerCase().contains("lumisense") ||
+            name.toLowerCase().contains("esp32");
       }).toList();
       setState(() {
         pairedDevices = filtered;
@@ -88,7 +89,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     }
   }
 
-  // ==================== 2. FILTRO EN ESCANEO ====================
+  // ========== Escaneo manual (solo dispositivos LumiSense/ESP32) ==========
   Future<void> startManualScan() async {
     _scanTimer?.cancel();
     await bluetooth.cancelScan();
@@ -102,13 +103,14 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     try {
       await bluetooth.startScan((device) {
         final deviceName = device.name ?? "";
-        // 🔹 FILTRO: solo dispositivos que contengan "lumisense"
-        if (deviceName.toLowerCase().contains("lumisense")) {
+        // 🔹 Solo añadir si el nombre contiene "lumisense" o "esp32"
+        if (deviceName.toLowerCase().contains("lumisense") ||
+            deviceName.toLowerCase().contains("esp32")) {
           if (mounted) {
             setState(() {
               if (!scannedDevices.any((d) => d.address == device.address)) {
                 scannedDevices.add(device);
-                debugPrint("📱 Escaneado (ESP32): ${device.name} (${device.address})");
+                debugPrint("✅ Añadido (ESP32): ${device.name} (${device.address})");
               }
             });
           }
@@ -121,11 +123,9 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
           setState(() {
             isScanning = false;
             if (scannedDevices.isEmpty && pairedDevices.isEmpty) {
-              connectionStatus =
-              "No se encontró ningún LumiSense. Verifica que el ESP32 esté encendido y visible.";
+              connectionStatus = "❌ No se encontró ningún dispositivo LumiSense ESP32.\nVerifica que el ESP32 esté encendido y visible.";
             } else if (scannedDevices.isEmpty && pairedDevices.isNotEmpty) {
-              connectionStatus =
-              "No se encontraron nuevos, pero tienes dispositivos emparejados abajo.";
+              connectionStatus = "No se encontraron nuevos dispositivos, pero tienes dispositivos emparejados abajo.";
             } else {
               connectionStatus = "Selecciona un dispositivo para conectar";
             }
@@ -140,6 +140,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     }
   }
 
+  // ========== Conectar a dispositivo ==========
   Future<void> connectToDevice(BluetoothDevice device) async {
     setState(() {
       isConnecting = true;
@@ -174,7 +175,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     }
   }
 
-  // ==================== 3. BOTÓN GRANDE DE DESCONEXIÓN ====================
+  // ========== Desconectar (también usado por el botón grande) ==========
   Future<void> disconnectDevice() async {
     await bluetooth.disconnect();
     setState(() {
@@ -193,6 +194,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
     );
   }
 
+  // ========== Verificar estado de Bluetooth y permisos ==========
   Future<void> _checkBluetoothStatus() async {
     bool locationOn = await Permission.location.serviceStatus.isEnabled;
     bool bluetoothOn = await bluetooth.isBluetoothEnabled();
@@ -233,7 +235,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
         actions: [
           if (bluetooth.isConnected)
             IconButton(
-              icon: const Icon(Icons.bluetooth_disabled, color: Colors.purple),
+              icon: const Icon(Icons.bluetooth_disabled, color: Colors.red),
               onPressed: disconnectDevice,
               tooltip: 'Desconectar',
             ),
@@ -270,7 +272,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
               ),
               const SizedBox(height: 20),
 
-              // ========== BOTÓN CONDICIONAL: ESCANEAR O DESCONECTAR ==========
+              // 🔹 Botón condicional: Escanear (si no conectado) o Desconectar (si conectado)
               if (!bluetooth.isConnected) ...[
                 ElevatedButton.icon(
                   onPressed: isScanning ? null : startManualScan,
@@ -283,20 +285,19 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
                 ),
                 const SizedBox(height: 20),
               ] else ...[
-                // 🟢 BOTÓN GRANDE DE DESCONEXIÓN (visible solo cuando conectado)
                 ElevatedButton.icon(
                   onPressed: disconnectDevice,
                   icon: const Icon(Icons.bluetooth_disabled, color: Colors.white),
                   label: const Text("Desconectar dispositivo"),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
+                    backgroundColor: Colors.purple.shade700,
                     minimumSize: const Size(double.infinity, 55),
                   ),
                 ),
                 const SizedBox(height: 20),
               ],
 
-              // Dispositivos emparejados (solo si NO está conectado)
+              // Lista de dispositivos emparejados (solo si no conectado)
               if (!bluetooth.isConnected && !loadingPaired && pairedDevices.isNotEmpty)
                 Expanded(
                   child: Column(
@@ -340,7 +341,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
                   ),
                 ),
 
-              // Dispositivos escaneados (solo si NO está conectado)
+              // Lista de dispositivos escaneados (solo si no conectado)
               if (!bluetooth.isConnected && scannedDevices.isNotEmpty)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,7 +383,7 @@ class _BluetoothConnectScreenState extends State<BluetoothConnectScreen>
                   ],
                 ),
 
-              // Mensaje si no hay nada
+              // Mensaje cuando no hay nada (y no está conectado ni escaneando)
               if (!bluetooth.isConnected &&
                   !loadingPaired &&
                   pairedDevices.isEmpty &&
