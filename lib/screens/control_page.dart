@@ -15,10 +15,32 @@ class ControlPage extends StatefulWidget {
 
 class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
   Color selectedColor = Colors.blue;
-  double intensity = 100;
-  double speed = 20;
+
+  final List<int> intensidadValores = [0, 3, 5, 8, 10];
+  int intensidadIndex = 4; // 10
+  int _lastSentIntensity = 10;
+
+  final List<int> velocidadValores = [1, 20, 40];
+  int velocidadIndex = 1; // 20
+  int _lastSentSpeed = 20;
 
   String? get modoActivo => bluetooth.modoActivo;
+
+  void _onIntensityChangeEnd(int newIndex) {
+    final valorEsp = intensidadValores[newIndex];
+    if (valorEsp == _lastSentIntensity) return;
+    bluetooth.send("INT:$valorEsp");
+    _lastSentIntensity = valorEsp;
+    debugPrint("🔆 Intensidad enviada: $valorEsp");
+  }
+
+  void _onSpeedChangeEnd(int newIndex) {
+    final valorEsp = velocidadValores[newIndex];
+    if (valorEsp == _lastSentSpeed) return;
+    bluetooth.send("SPEED:$valorEsp");
+    _lastSentSpeed = valorEsp;
+    debugPrint("⚡ Velocidad enviada: $valorEsp");
+  }
 
   @override
   void initState() {
@@ -51,10 +73,13 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
     setState(() {});
   }
 
-  String getSpeedLabel(double value) {
-    if (value <= 13) return "Lento";
-    if (value <= 27) return "Normal";
-    return "Rápido";
+  String getSpeedLabel(int index) {
+    switch (index) {
+      case 0: return "Lento";
+      case 1: return "Normal";
+      case 2: return "Rápido";
+      default: return "Normal";
+    }
   }
 
   void abrirSelectorColor() {
@@ -94,7 +119,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
     );
   }
 
-  // 🔹 NUEVO: método para desconectar con confirmación
   Future<void> _confirmDisconnect() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -123,9 +147,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
             backgroundColor: Colors.orange,
           ),
         );
-        // Opcional: regresar a la pantalla de conexión
-        // Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BluetoothConnectScreen()));
-        setState(() {}); // Actualizar UI
+        setState(() {});
       }
     }
   }
@@ -140,14 +162,25 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
         title: const Text("Control LED"),
         backgroundColor: Colors.black,
         actions: [
-          // 🔹 NUEVO: Botón de desconexión (solo visible cuando conectado)
           if (isConnected)
-            IconButton(
-              icon: const Icon(Icons.bluetooth_disabled, color: Colors.red),
-              onPressed: _confirmDisconnect,
-              tooltip: 'Desconectar Bluetooth',
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: ElevatedButton.icon(
+                onPressed: _confirmDisconnect,
+                icon: const Icon(Icons.bluetooth_disabled, size: 18),
+                label: const Text("Desconectar"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.withOpacity(0.2),
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  elevation: 0,
+                ),
+              ),
             ),
-          // Indicador de modo activo (original)
           if (modoActivo != null && controlesHabilitados)
             Container(
               margin: const EdgeInsets.only(right: 8),
@@ -181,7 +214,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                 ],
               ),
             ),
-          // Indicador de conexión (original)
           Container(
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -226,7 +258,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // Botón Bluetooth (original)
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 20),
@@ -245,8 +276,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                           enableDrag: true,
                           backgroundColor: Colors.transparent,
                           shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.vertical(
-                                top: Radius.circular(25)),
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
                           ),
                           builder: (_) => const BluetoothSheet(),
                         ).then((_) {
@@ -262,8 +292,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                         style: const TextStyle(fontSize: 16),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                        isConnected ? Colors.green : moradoLumisense,
+                        backgroundColor: isConnected ? Colors.green : moradoLumisense,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(double.infinity, 55),
                         shape: RoundedRectangleBorder(
@@ -277,7 +306,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                 ),
               ),
 
-              // Estado de conexión (original)
               if (isConnected)
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -333,7 +361,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 
               const SizedBox(height: 20),
 
-              // Encendido/Apagado (original)
               AbsorbPointer(
                 absorbing: !controlesHabilitados,
                 child: Opacity(
@@ -386,7 +413,6 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 
               const SizedBox(height: 20),
 
-              // Botón de color (original)
               if (modoActivo != "Emociones") ...[
                 AbsorbPointer(
                   absorbing: !controlesHabilitados,
@@ -434,7 +460,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                 const SizedBox(height: 30),
               ],
 
-              // Intensidad (original)
+              // ========== INTENSIDAD ==========
               AbsorbPointer(
                 absorbing: !controlesHabilitados,
                 child: Opacity(
@@ -455,26 +481,37 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                               child: Column(
                                 children: [
                                   Slider(
-                                    value: intensity,
+                                    value: intensidadIndex.toDouble(),
                                     min: 0,
-                                    max: 100,
-                                    divisions: 100,
+                                    max: 4,
+                                    divisions: 4,
                                     activeColor: moradoLumisense,
-                                    inactiveColor:
-                                    moradoLumisense.withOpacity(0.3),
-                                    onChanged: ledOn && controlesHabilitados
-                                        ? (value) {
-                                      setState(() {
-                                        intensity = value;
-                                      });
-                                      int espValue = (value / 5).round();
-                                      bluetooth.send("INT:$espValue");
-                                    }
-                                        : null,
+                                    inactiveColor: moradoLumisense.withOpacity(0.3),
+                                    onChanged: (value) {
+                                      int newIndex = value.round();
+                                      if (newIndex != intensidadIndex) {
+                                        setState(() {
+                                          intensidadIndex = newIndex;
+                                        });
+                                      }
+                                    },
+                                    onChangeEnd: (value) {
+                                      int newIndex = value.round();
+                                      _onIntensityChangeEnd(newIndex);
+                                    },
                                   ),
-                                  Text(
-                                    "${intensity.toInt()}%",
-                                    style: const TextStyle(fontSize: 16),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: const [
+                                        Text("0%", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                        Text("25%", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                        Text("50%", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                        Text("75%", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                        Text("100%", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -489,7 +526,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 
               const SizedBox(height: 20),
 
-              // Velocidad (original)
+              // ========== VELOCIDAD ==========
               AbsorbPointer(
                 absorbing: !controlesHabilitados,
                 child: Opacity(
@@ -514,70 +551,59 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                               child: Column(
                                 children: [
                                   Slider(
-                                    value: speed,
+                                    value: velocidadIndex.toDouble(),
                                     min: 0,
-                                    max: 40,
-                                    divisions: 40,
-                                    activeColor: velocidadHabilitada
-                                        ? moradoLumisense
-                                        : Colors.grey,
-                                    inactiveColor:
-                                    moradoLumisense.withOpacity(0.3),
+                                    max: 2,
+                                    divisions: 2,
+                                    activeColor: velocidadHabilitada ? moradoLumisense : Colors.grey,
+                                    inactiveColor: moradoLumisense.withOpacity(0.3),
                                     onChanged: velocidadHabilitada
                                         ? (value) {
-                                      setState(() {
-                                        speed = value;
-                                      });
-                                      bluetooth.send("SPEED:${value.toInt()}");
+                                      int newIndex = value.round();
+                                      if (newIndex != velocidadIndex) {
+                                        setState(() {
+                                          velocidadIndex = newIndex;
+                                        });
+                                      }
+                                    }
+                                        : null,
+                                    onChangeEnd: velocidadHabilitada
+                                        ? (value) {
+                                      int newIndex = value.round();
+                                      _onSpeedChangeEnd(newIndex);
                                     }
                                         : null,
                                   ),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
                                     child: Row(
-                                      mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
                                           "Lento",
                                           style: TextStyle(
-                                            color: velocidadHabilitada &&
-                                                speed <= 13
+                                            color: velocidadHabilitada && velocidadIndex == 0
                                                 ? moradoLumisense
-                                                : (velocidadHabilitada
-                                                ? Colors.white70
-                                                : Colors.grey),
-                                            fontWeight: speed <= 13
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                                : (velocidadHabilitada ? Colors.white70 : Colors.grey),
+                                            fontWeight: velocidadIndex == 0 ? FontWeight.bold : FontWeight.normal,
                                           ),
                                         ),
                                         Text(
                                           "Normal",
                                           style: TextStyle(
-                                            color: velocidadHabilitada &&
-                                                speed > 13 &&
-                                                speed <= 27
+                                            color: velocidadHabilitada && velocidadIndex == 1
                                                 ? moradoLumisense
-                                                : (velocidadHabilitada
-                                                ? Colors.white70
-                                                : Colors.grey),
-                                            fontWeight: (speed > 13 && speed <= 27)
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                                : (velocidadHabilitada ? Colors.white70 : Colors.grey),
+                                            fontWeight: velocidadIndex == 1 ? FontWeight.bold : FontWeight.normal,
                                           ),
                                         ),
                                         Text(
                                           "Rápido",
                                           style: TextStyle(
-                                            color: velocidadHabilitada && speed > 27
+                                            color: velocidadHabilitada && velocidadIndex == 2
                                                 ? moradoLumisense
-                                                : (velocidadHabilitada
-                                                ? Colors.white70
-                                                : Colors.grey),
-                                            fontWeight: speed > 27
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
+                                                : (velocidadHabilitada ? Colors.white70 : Colors.grey),
+                                            fontWeight: velocidadIndex == 2 ? FontWeight.bold : FontWeight.normal,
                                           ),
                                         ),
                                       ],
@@ -588,33 +614,18 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                         decoration: BoxDecoration(
-                                          color: velocidadHabilitada
-                                              ? moradoLumisense.withOpacity(0.2)
-                                              : Colors.transparent,
+                                          color: velocidadHabilitada ? moradoLumisense.withOpacity(0.2) : Colors.transparent,
                                           borderRadius: BorderRadius.circular(12),
                                         ),
                                         child: Text(
-                                          getSpeedLabel(speed),
+                                          getSpeedLabel(velocidadIndex),
                                           style: TextStyle(
                                             fontSize: 16,
-                                            color: velocidadHabilitada
-                                                ? moradoLumisense
-                                                : Colors.grey,
+                                            color: velocidadHabilitada ? moradoLumisense : Colors.grey,
                                             fontWeight: FontWeight.bold,
                                           ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "${speed.toInt()}",
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: velocidadHabilitada
-                                              ? Colors.white70
-                                              : Colors.grey,
                                         ),
                                       ),
                                     ],
@@ -660,7 +671,7 @@ class _ControlPageState extends State<ControlPage> with WidgetsBindingObserver {
 }
 
 // =================================================
-//                HOJA DE BLUETOOTH (MODAL) ORIGINAL
+//                HOJA DE BLUETOOTH MODAL (FILTRADA)
 // =================================================
 
 class BluetoothSheet extends StatefulWidget {
@@ -674,7 +685,12 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
   List<BluetoothDevice> devices = [];
   bool scanning = true;
   bool connecting = false;
-  String statusMessage = "Buscando dispositivos...";
+  String statusMessage = "Buscando LumiSense ESP32...";
+
+  bool _isOurDevice(BluetoothDevice device) {
+    final name = device.name ?? "";
+    return name == "LumiSense ESP32" || name.contains("LumiSense ESP32");
+  }
 
   @override
   void initState() {
@@ -686,18 +702,22 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
     setState(() {
       scanning = true;
       devices.clear();
-      statusMessage = "Buscando dispositivos...";
+      statusMessage = "Buscando LumiSense ESP32...";
     });
 
     try {
       await bluetooth.startScan((device) {
-        if (mounted) {
-          setState(() {
-            if (!devices.any((d) => d.address == device.address)) {
-              devices.add(device);
-              debugPrint("Dispositivo agregado: ${device.name ?? 'Desconocido'}");
-            }
-          });
+        if (_isOurDevice(device)) {
+          if (mounted) {
+            setState(() {
+              if (!devices.any((d) => d.address == device.address)) {
+                devices.add(device);
+                debugPrint("Dispositivo válido agregado: ${device.name ?? 'LumiSense ESP32'}");
+              }
+            });
+          }
+        } else {
+          debugPrint("⛔ Escaneado ignorado (no es LumiSense): ${device.name}");
         }
       });
 
@@ -707,7 +727,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
         setState(() {
           scanning = false;
           if (devices.isEmpty) {
-            statusMessage = "No se encontraron dispositivos";
+            statusMessage = "No se encontró ningún dispositivo LumiSense ESP32";
           }
         });
       }
@@ -736,7 +756,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✓ ESP32 conectado correctamente'),
+            content: Text('✓ LumiSense ESP32 conectado correctamente'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -783,7 +803,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
           ),
           const SizedBox(height: 15),
           Text(
-            scanning ? "Buscando dispositivos..." : "Dispositivos encontrados",
+            scanning ? "Buscando LumiSense ESP32..." : "Dispositivo encontrado",
             style: const TextStyle(
               color: Colors.white,
               fontSize: 20,
@@ -837,7 +857,7 @@ class _BluetoothSheetState extends State<BluetoothSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemBuilder: (context, index) {
                 final device = devices[index];
-                final deviceName = device.name ?? "ESP32 Desconocido";
+                final deviceName = device.name ?? "LumiSense ESP32";
                 return Card(
                   color: const Color(0xff0F172A),
                   margin: const EdgeInsets.symmetric(vertical: 8),

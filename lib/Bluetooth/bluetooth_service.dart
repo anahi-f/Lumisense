@@ -15,7 +15,7 @@ class BluetoothManager {
   bool isConnected = false;
   bool scanning = false;
   bool _reconnecting = false;
-  Timer? _keepAliveTimer;               // ✅ Declarado
+  // Timer? _keepAliveTimer;  // ✅ ELIMINADO: ya no se usa
   String? _lastConnectedMac;
 
   final ValueNotifier<bool> connectionNotifier = ValueNotifier<bool>(false);
@@ -209,7 +209,7 @@ class BluetoothManager {
       isConnected = true;
       connectionNotifier.value = true;
       await _saveLastDeviceMac(device.address);
-      _startKeepAlive();
+      // _startKeepAlive();  // ✅ ELIMINADO: ya no se envía KEEPALIVE
       debugPrint("✅ Conexión SPP establecida");
     } catch (e) {
       debugPrint("Error en conexión: $e");
@@ -218,16 +218,7 @@ class BluetoothManager {
     }
   }
 
-  void _startKeepAlive() {
-    _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (isConnected && _connection != null) {
-        send("KEEPALIVE");
-      } else {
-        timer.cancel();
-      }
-    });
-  }
+  // ❌ ELIMINADO: método _startKeepAlive() para no enviar KEEPALIVE
 
   // ========== ENVÍO DE DATOS ==========
   Future<void> send(String message) async {
@@ -250,8 +241,8 @@ class BluetoothManager {
 
   // ========== DESCONEXIÓN ==========
   Future<void> disconnect() async {
-    _keepAliveTimer?.cancel();
-    _keepAliveTimer = null;
+    // _keepAliveTimer?.cancel(); // ❌ Ya no existe
+    // _keepAliveTimer = null;
     try {
       if (_connection != null) {
         if (ledOn) {
@@ -279,7 +270,7 @@ class BluetoothManager {
     _connection = null;
     _inputSubscription?.cancel();
     ledOn = false;
-    _keepAliveTimer?.cancel();
-    _keepAliveTimer = null;
+    // _keepAliveTimer?.cancel(); // ❌ Ya no existe
+    // _keepAliveTimer = null;
   }
 }

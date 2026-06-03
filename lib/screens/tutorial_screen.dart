@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 
 const Color moradoLumisense = Color(0xFFd0a3cf);
-const Color moradoOscuro = Color(0xFF8a5d8a); // Morado más oscuro para mejor contraste
+const Color moradoOscuro = Color(0xFF8a5d8a);
 
 class TutorialScreen extends StatefulWidget {
   const TutorialScreen({super.key});
@@ -32,7 +32,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
     {
       'icon': Icons.emoji_emotions,
       'titulo': 'Modo Emociones',
-      'descripcion': 'Las luces cambian según cómo te sientes:\n\n🔴 Rojo\n🟡 Amarillo\n🔵 Azul\n',
+      'descripcion': 'Las luces cambian según cómo te sientes:\n\n🔴 Rojo\n🟡 Amarillo\n🔵 Azul',
       'color': Colors.yellow,
     },
     {
@@ -50,8 +50,14 @@ class _TutorialScreenState extends State<TutorialScreen> {
     {
       'icon': Icons.tune,
       'titulo': 'Controles',
-      'descripcion': 'En la página "Control" puedes:\n\n• Encender/Apagar las luces\n• Seleccionar colores personalizados\n• Ajustar intensidad (0-100%)\n• Controlar velocidad (Lento/Normal/Rápido)\n\nLos controles se habilitan solo cuando\nhay conexión Bluetooth activa.',
+      'descripcion': 'En la página "Control" puedes:\n\n• Encender/Apagado las luces\n• Seleccionar colores personalizados\n• Ajustar intensidad (0-100%)\n• Controlar velocidad (Lento/Normal/Rápido)\n\nLos controles se habilitan solo cuando\nhay conexión Bluetooth activa.',
       'color': Colors.green,
+    },
+    {
+      'icon': Icons.bluetooth_disabled,
+      'titulo': 'Desconexión Bluetooth',
+      'descripcion': 'Cuando estés conectado, en la pantalla de Control\nverás un botón rojo con el texto "Desconectar".\n\nPúlsalo para finalizar la conexión de forma segura.\n\nTambién puedes desconectar desde la pantalla\nde conexión principal con el ícono 🔴.',
+      'color': Colors.red,
     },
   ];
 
@@ -61,7 +67,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Páginas del tutorial
           PageView(
             controller: _pageController,
             onPageChanged: (index) {
@@ -75,7 +80,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Icono grande
                     Container(
                       padding: const EdgeInsets.all(30),
                       decoration: BoxDecoration(
@@ -93,8 +97,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
                       ),
                     ),
                     const SizedBox(height: 40),
-
-                    // Título
                     Text(
                       page['titulo'],
                       style: const TextStyle(
@@ -105,8 +107,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 20),
-
-                    // Descripción
                     Text(
                       page['descripcion'],
                       style: const TextStyle(
@@ -120,7 +120,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
               );
             }).toList(),
           ),
-
           // Puntitos indicadores
           Positioned(
             bottom: 100,
@@ -135,16 +134,13 @@ class _TutorialScreenState extends State<TutorialScreen> {
                   width: currentPage == index ? 12 : 8,
                   height: currentPage == index ? 12 : 8,
                   decoration: BoxDecoration(
-                    color: currentPage == index
-                        ? moradoLumisense
-                        : Colors.grey,
+                    color: currentPage == index ? moradoLumisense : Colors.grey,
                     shape: BoxShape.circle,
                   ),
                 ),
               ),
             ),
           ),
-
           // Botón cerrar (saltar tutorial)
           Positioned(
             top: 40,
@@ -164,7 +160,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
               },
             ),
           ),
-
           // Botones Anterior/Siguiente/Comenzar
           Positioned(
             bottom: 30,
@@ -183,15 +178,11 @@ class _TutorialScreenState extends State<TutorialScreen> {
                     },
                     child: const Text(
                       "← Anterior",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                      ),
+                      style: TextStyle(color: Colors.white, fontSize: 16),
                     ),
                   )
                 else
                   const SizedBox(width: 70),
-
                 if (currentPage < pages.length - 1)
                   ElevatedButton(
                     onPressed: () {
@@ -202,17 +193,14 @@ class _TutorialScreenState extends State<TutorialScreen> {
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: moradoLumisense,
-                      foregroundColor: moradoOscuro, // 👈 Texto en morado oscuro
+                      foregroundColor: moradoOscuro,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(15),
                       ),
                     ),
                     child: const Text(
                       "Siguiente →",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   )
                 else
@@ -220,7 +208,6 @@ class _TutorialScreenState extends State<TutorialScreen> {
                     onPressed: () async {
                       SharedPreferences prefs = await SharedPreferences.getInstance();
                       await prefs.setBool('visto_tutorial', true);
-
                       if (mounted) {
                         Navigator.pushAndRemoveUntil(
                           context,
@@ -238,10 +225,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
                     ),
                     child: const Text(
                       "¡Comenzar!",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ),
               ],
